@@ -1,0 +1,38 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.log
+*.sqlite3
+*.db
+*.swp
+
+# Python environments
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# IDE / OS junk
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Docker artifacts
+pgdata/
