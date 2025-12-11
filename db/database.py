@@ -1,23 +1,31 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from dotenv import load_dotenv
 import os
+import asyncio
+from dotenv import load_dotenv
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
 
-# Загружаем .env
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Создаем engine для psycopg2
-engine = create_engine(
-    DATABASE_URL,
-    echo=True,           # логирование SQL
-    pool_pre_ping=True,  # проверка соединения перед использованием
+# Главное: обязательно asyncpg
+ASYNC_DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+
+# Engine
+engine = create_async_engine(
+    ASYNC_DATABASE_URL,
+    echo=True,
+    future=True
 )
 
-# Создаем фабрику сессий
-SessionLocal = sessionmaker(
+# Async session factory
+AsyncSessionLocal = sessionmaker(
     bind=engine,
-    autoflush=False,
-    autocommit=False,
+    class_=AsyncSession,
+    expire_on_commit=False,
 )
+
+# Для зависимостей
+async def get_session():
+    async with AsyncSessionLocal() as session:
+        yield session

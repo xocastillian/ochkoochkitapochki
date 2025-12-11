@@ -1,7 +1,9 @@
 import asyncio
 import os
+import sys 
 from dotenv import load_dotenv
-
+if sys.platform.startswith("win"):
+     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 

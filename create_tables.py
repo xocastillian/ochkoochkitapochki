@@ -1,10 +1,17 @@
+import asyncio
+import sys
+
+# ФИКС ДЛЯ WINDOWS
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from db.database import engine
 from db.models import Base
 
-def create_tables():
+async def create_tables():
     print(">>> Создаем таблицы...")
-    Base.metadata.create_all(bind=engine)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
     print(">>> Таблицы успешно созданы!")
 
-if __name__ == "__main__":
-    create_tables()
+asyncio.run(create_tables())

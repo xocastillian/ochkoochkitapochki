@@ -7,25 +7,17 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from bot.states.employer_states import EmployerStates
 from db.repository import Repository
 
-# Создаем маршрутизатор для хендлеров работодателей
 router = Router()
 
 
-# -------- Вспомогательная функция: создание кнопки "Начать" --------
+# ---------- Кнопки ----------
 def get_start_keyboard():
-    """
-    Создает inline клавиатуру с кнопкой для начала анкеты работодателя.
-    """
     kb = InlineKeyboardBuilder()
     kb.button(text="Начать", callback_data="employer_start")
     return kb.as_markup()
 
 
-# -------- Вспомогательная функция: создание кнопок подтверждения --------
 def get_confirm_keyboard():
-    """
-    Создает inline клавиатуру с кнопками Да/Нет для подтверждения.
-    """
     kb = InlineKeyboardBuilder()
     kb.button(text="Да", callback_data="employer_confirm_yes")
     kb.button(text="Нет", callback_data="employer_confirm_no")
@@ -33,174 +25,132 @@ def get_confirm_keyboard():
     return kb.as_markup()
 
 
-# -------- Команда /employer_start: главное меню --------
+# ---------- /employer_start ----------
 @router.message(Command("employer_start"))
 async def cmd_employer_start(message: Message, state: FSMContext):
-    """
-    Обработчик команды /employer_start.
-    Показывает приветственное сообщение для работодателя.
-    """
     await state.clear()
+
+    # Проверяем, есть ли юзер в таблице users
+    user = await Repository.get_user_by_telegram_id(message.from_user.id)
+    if not user:
+        user = await Repository.create_user(
+            telegram_id=message.from_user.id,
+            role="employer",
+            username=message.from_user.username
+        )
+
     await message.answer(
-        "👋 Здравствуйте! Давайте создадим вашу анкету работодателя.\n\n"
-        "Готовы начать?",
+        "👋 Здравствуйте! Давайте создадим вашу анкету работодателя.\n\nГотовы начать?",
         reply_markup=get_start_keyboard()
     )
 
 
-# -------- Нажата кнопка "Начать" --------
+# ---------- Начать анкету ----------
 @router.callback_query(F.data == "employer_start")
 async def start_employer_form(callback: CallbackQuery, state: FSMContext):
-    """
-    Обработчик нажатия кнопки "Начать".
-    Переходит в первое состояние (вопрос о названии компании).
-    """
     await state.set_state(EmployerStates.company_name)
-    await callback.message.edit_text(
-        "❓ Как называется ваша компания?"
-    )
+    await callback.message.edit_text("❓ Как называется ваша компания?")
     await callback.answer()
 
 
-# -------- Шаг 1: спрашиваем название компании --------
+# ---------- Шаг 1: название компании ----------
 @router.message(EmployerStates.company_name)
 async def process_company_name(message: Message, state: FSMContext):
-    """
-    Получает название компании.
-    Валидирует: не пустое и не слишком короткое.
-    """
     company_name = message.text.strip()
-    
-    if not company_name or len(company_name) < 2:
-        await message.answer("❌ Название компании должно содержать минимум 2 символа. Попробуйте снова.")
+    if len(company_name) < 2:
+        await message.answer("❌ Название компании должно содержать минимум 2 символа.")
         return
-    
+
     await state.update_data(company_name=company_name)
     await state.set_state(EmployerStates.contact_phone)
-    await message.answer("❓ Ваш контактный номер телефона? (например: +7 900 123 45 67)")
+    await message.answer("❓ Ваш контактный номер телефона?")
 
 
-# -------- Шаг 2: спрашиваем контактный телефон --------
+# ---------- Шаг 2: телефон ----------
 @router.message(EmployerStates.contact_phone)
 async def process_contact_phone(message: Message, state: FSMContext):
-    """
-    Получает контактный телефон работодателя.
-    Валидирует: содержит цифры и минимальную длину.
-    """
-    contact_phone = message.text.strip()
-    
-    # Простая валидация: должны быть цифры
-    if not any(c.isdigit() for c in contact_phone):
-        await message.answer("❌ Номер телефона должен содержать цифры.")
+    phone = message.text.strip()
+    if not any(c.isdigit() for c in phone) or len(phone) < 7:
+        await message.answer("❌ Введите корректный номер телефона.")
         return
-    
-    if len(contact_phone) < 7:
-        await message.answer("❌ Номер телефона должен быть полным.")
-        return
-    
-    await state.update_data(contact_phone=contact_phone)
+
+    await state.update_data(contact_phone=phone)
     await state.set_state(EmployerStates.city)
     await message.answer("❓ В каком городе находится ваша компания?")
 
 
-# -------- Шаг 3: спрашиваем город компании --------
+# ---------- Шаг 3: город ----------
 @router.message(EmployerStates.city)
-async def process_city(message: Message, state: FSMContext):
-    """
-    Получает город, где находится компания.
-    Валидирует: не пустое и минимальная длина.
-    """
+async def process_company_city(message: Message, state: FSMContext):
     city = message.text.strip()
-    
-    if not city or len(city) < 2:
-        await message.answer("❌ Введите название города (минимум 2 символа).")
+    if len(city) < 2:
+        await message.answer("❌ Введите корректный город.")
         return
-    
+
     await state.update_data(city=city)
     await state.set_state(EmployerStates.vacancy_title)
     await message.answer("❓ Какую должность вы предлагаете?")
 
 
-# -------- Шаг 4: спрашиваем название вакансии --------
+# ---------- Шаг 4: должность ----------
 @router.message(EmployerStates.vacancy_title)
 async def process_vacancy_title(message: Message, state: FSMContext):
-    """
-    Получает название вакансии/должности.
-    Валидирует: не пустое и минимальная длина.
-    """
-    vacancy_title = message.text.strip()
-    
-    if not vacancy_title or len(vacancy_title) < 2:
-        await message.answer("❌ Введите название должности (минимум 2 символа).")
+    title = message.text.strip()
+    if len(title) < 2:
+        await message.answer("❌ Введите корректное название должности.")
         return
-    
-    await state.update_data(vacancy_title=vacancy_title)
+
+    await state.update_data(vacancy_title=title)
     await state.set_state(EmployerStates.vacancy_salary)
-    await message.answer("❓ Какая зарплата для этой должности? (введите сумму в рублях)")
+    await message.answer("❓ Какая зарплата предлагается? (число)")
 
 
-# -------- Шаг 5: спрашиваем зарплату --------
+# ---------- Шаг 5: зарплата ----------
 @router.message(EmployerStates.vacancy_salary)
-async def process_vacancy_salary(message: Message, state: FSMContext):
-    """
-    Получает зарплату для вакансии.
-    Валидирует: положительное число.
-    """
+async def process_salary(message: Message, state: FSMContext):
     try:
-        vacancy_salary = float(message.text.strip())
-        if vacancy_salary <= 0:
-            await message.answer("❌ Зарплата должна быть положительной суммой.")
-            return
+        salary = float(message.text.strip())
+        if salary <= 0:
+            raise ValueError
     except ValueError:
-        await message.answer("❌ Пожалуйста, введите число.")
+        await message.answer("❌ Зарплата должна быть числом > 0.")
         return
-    
-    await state.update_data(vacancy_salary=vacancy_salary)
+
+    await state.update_data(vacancy_salary=salary)
     await state.set_state(EmployerStates.vacancy_requirements)
-    await message.answer("❓ Какие требования к кандидату? (опыт, навыки, образование и т.д.)")
+    await message.answer("❓ Какие требования к кандидату?")
 
 
-# -------- Шаг 6: спрашиваем требования к кандидату --------
+# ---------- Шаг 6: требования ----------
 @router.message(EmployerStates.vacancy_requirements)
-async def process_vacancy_requirements(message: Message, state: FSMContext):
-    """
-    Получает требования к кандидату.
-    Валидирует: не пустое и минимальная длина.
-    """
-    vacancy_requirements = message.text.strip()
-    
-    if not vacancy_requirements or len(vacancy_requirements) < 5:
-        await message.answer("❌ Опишите требования подробнее (минимум 5 символов).")
+async def process_requirements(message: Message, state: FSMContext):
+    requirements = message.text.strip()
+    if len(requirements) < 5:
+        await message.answer("❌ Опишите требования подробнее.")
         return
-    
-    await state.update_data(vacancy_requirements=vacancy_requirements)
+
+    await state.update_data(vacancy_requirements=requirements)
     await state.set_state(EmployerStates.vacancy_needed)
-    await message.answer("❓ Сколько человек вам нужно на эту должность? (введите число)")
+    await message.answer("❓ Сколько сотрудников вам требуется? (число)")
 
 
-# -------- Шаг 7: спрашиваем количество вакансий --------
+# ---------- Шаг 7: количество ----------
 @router.message(EmployerStates.vacancy_needed)
-async def process_vacancy_needed(message: Message, state: FSMContext):
-    """
-    Получает количество нужных сотрудников.
-    Валидирует: положительное целое число.
-    """
+async def process_needed(message: Message, state: FSMContext):
     try:
-        vacancy_needed = int(message.text.strip())
-        if vacancy_needed <= 0:
-            await message.answer("❌ Количество должно быть положительным числом.")
-            return
+        count = int(message.text.strip())
+        if count <= 0:
+            raise ValueError
     except ValueError:
-        await message.answer("❌ Пожалуйста, введите целое число.")
+        await message.answer("❌ Введите положительное целое число.")
         return
-    
-    await state.update_data(vacancy_needed=vacancy_needed)
+
+    await state.update_data(vacancy_needed=count)
     await state.set_state(EmployerStates.confirm)
-    
-    # -------- Шаг 8: показываем карточку для подтверждения --------
+
     data = await state.get_data()
-    
-    confirmation_text = (
+
+    text = (
         "✅ Проверьте данные вакансии:\n\n"
         f"<b>Компания:</b> {data['company_name']}\n"
         f"<b>Телефон:</b> {data['contact_phone']}\n"
@@ -211,73 +161,64 @@ async def process_vacancy_needed(message: Message, state: FSMContext):
         f"<b>Количество:</b> {data['vacancy_needed']} чел.\n\n"
         "Сохранить вакансию?"
     )
-    
-    await message.answer(confirmation_text, reply_markup=get_confirm_keyboard(), parse_mode="HTML")
+
+    await message.answer(text, reply_markup=get_confirm_keyboard(), parse_mode="HTML")
 
 
-# -------- Подтверждение: нажата кнопка "Да" --------
+# ---------- Подтверждение: Да ----------
 @router.callback_query(F.data == "employer_confirm_yes")
-async def confirm_employer_yes(callback: CallbackQuery, state: FSMContext):
-    """
-    Обработчик нажатия "Да" при подтверждении.
-    Сохраняет анкету работодателя и создает вакансию в БД.
-    """
+async def employer_confirm_yes(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    
+
     try:
-        user_id = callback.from_user.id
-        
-        # -------- Проверяем, есть ли уже профиль работодателя --------
-        existing_employer = await Repository.get_employer_by_user_id(user_id)
-        
-        if existing_employer:
-            employer_id = existing_employer.id
-        else:
-            # -------- Создаем новый профиль работодателя --------
-            employer = await Repository.create_employer(
-                user_id=user_id,
-                company_name=data['company_name'],
-                city=data['city'],
-                company_info="",  # Пока пусто
-                requirements=data['vacancy_requirements']
+        # 1. Находим юзера (user.id — нужен для employer.user_id)
+        user = await Repository.get_user_by_telegram_id(callback.from_user.id)
+        if not user:
+            user = await Repository.create_user(
+                telegram_id=callback.from_user.id,
+                role="employer",
+                username=callback.from_user.username
             )
-            employer_id = employer.id
-        
-        # -------- Создаем вакансию --------
+
+        # 2. Находим профиль работодателя
+        employer = await Repository.get_employer_by_user_id(user.id)
+
+        if not employer:
+            employer = await Repository.create_employer(
+                user_id=user.id,
+                company_name=data["company_name"],
+                city=data["city"],
+                company_info=f"Контакт: {data['contact_phone']}",
+                requirements=data["vacancy_requirements"]
+            )
+
+        # 3. Создаем вакансию
         await Repository.create_vacancy(
-            employer_id=employer_id,
-            position=data['vacancy_title'],
-            city=data['city'],
-            salary=data['vacancy_salary'],
-            requirements=data['vacancy_requirements'],
-            count_needed=data['vacancy_needed']
+            employer_id=employer.id,
+            position=data["vacancy_title"],
+            city=data["city"],
+            salary=data["vacancy_salary"],
+            requirements=data["vacancy_requirements"],
+            count_needed=data["vacancy_needed"]
         )
-        
+
         await callback.message.edit_text(
-            "🎉 Вакансия успешно сохранена!\n\n"
-            "Теперь вы можете искать подходящих кандидатов."
+            "🎉 Вакансия успешно сохранена!\nОжидайте подбор кандидатов."
         )
-        
+
     except Exception as e:
-        await callback.message.edit_text(
-            f"❌ Ошибка при сохранении: {str(e)}"
-        )
-    
+        await callback.message.edit_text(f"❌ Ошибка при сохранении: {e}")
+
     finally:
         await state.clear()
         await callback.answer()
 
 
-# -------- Подтверждение: нажата кнопка "Нет" --------
+# ---------- Подтверждение: Нет ----------
 @router.callback_query(F.data == "employer_confirm_no")
-async def confirm_employer_no(callback: CallbackQuery, state: FSMContext):
-    """
-    Обработчик нажатия "Нет" при подтверждении.
-    Отменяет создание вакансии и предлагает начать заново.
-    """
+async def employer_confirm_no(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.edit_text(
-        "❌ Создание вакансии отменено.\n\n"
-        "Чтобы начать заново — используйте команду /employer_start"
+        "❌ Создание вакансии отменено.\nВведите /employer_start, чтобы попробовать снова."
     )
     await callback.answer()
